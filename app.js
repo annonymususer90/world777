@@ -32,9 +32,10 @@ app.post('/register', async (req, res) => {
         const { username } = req.body;
 
         const result = await register(username);
-
-        // Return success message
-        res.json({ message: 'User registration successful', result });
+        if (result.success == false)
+            res.json({ message: 'User registration not successful', result });
+        else
+            res.json({ message: 'User registration successful', result });
     } catch (error) {
         console.error('Error during registration:', error.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -61,9 +62,10 @@ app.post('/deposit', async (req, res) => {
         const { username, amount } = req.body;
 
         const result = await deposit(username, amount);
-
-        // Return success message
-        res.json({ message: 'deposited successfully', result });
+        if (result.success == false)
+            res.json({ message: 'deposit not successful', result });
+        else
+            res.json({ message: 'deposited successfully', result });
     } catch (error) {
         console.error('Error during deposit:', error.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -75,9 +77,10 @@ app.post('/withdraw', async (req, res) => {
         const { username, amount } = req.body;
 
         const result = await withdraw(username, amount);
-
-        // Return success message
-        res.json({ message: 'Withdrawn successfully', result });
+        if (result.success == false)
+            res.json({ message: 'withdraw not successful', result });
+        else
+            res.json({ message: 'Withdrawn successfully', result });
     } catch (error) {
         console.error('Error during withdrawal:', error.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -108,6 +111,16 @@ async function register(username) {
 
         await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[1]/input', { timeout: 120000 })
             .then(element => element.type(username));
+
+        let anim = await page.waitForSelector('.form-control.animation.is-invalid', { timeout: 90000 });
+
+        if (anim !== null) {
+            return {
+                success: false,
+                error: "Invalid Username"
+            };
+        };
+
         await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[2]/input', { timeout: 120000 })
             .then(element => element.type(username));
         await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[3]/input', { timeout: 120000 })
@@ -118,7 +131,6 @@ async function register(username) {
             .then(element => element.select('7'));
         await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[2]/div/div/div[5]/input', { timeout: 120000 })
             .then(element => element.type('244092\n'));
-
 
     } catch (error) {
         console.error('Error', error.message);
@@ -135,7 +147,8 @@ async function login() {
             .then(element => element.click());
         await page.waitForSelector('#input-1');
         await page.type('#input-1', 'Xgoapi');
-        await page.type('#input-2', 'More1234\n');
+        await page.type('#input-2', 'More1234');
+        await page.evaluate(`document.querySelector('form[data-vv-scope="form-login"]').children[2].firstChild.click();`);
         await page.waitForNavigation({ timeout: 90000 });
         console.log('login successful');
     }
@@ -162,7 +175,6 @@ async function changePass(username, pass, confirmpass) {
         page.waitForNavigation();
         console.log("Redirected");
 
-        // Wait for the search input field and type username
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
         const searchInput = await page.$('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input');
         await searchInput.type(username + '\n');
@@ -192,7 +204,42 @@ async function changePass(username, pass, confirmpass) {
 async function lockUser(username) {
     try {
         await login();
+
+        console.log("Redirecting");
+
+        await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
         page.waitForNavigation();
+        console.log("Redirected");
+
+
+        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
+
+        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
+            .then(element => element.type(username + "\n"));
+        await page.waitForSelector(`span[title='${username}']`);
+        console.log("searching username");
+
+        await page.evaluate(`document.querySelector('span[title="${username}"]').parentElement.parentElement.children[6].firstChild.children[2].click();`);
+        await page.evaluate(`document.querySelector('ul[role="tablist"]').children[2].firstChild.click();`);
+
+
+        await page.waitForSelector('input[name="UserLockMpassword"]')
+            .then(element => element.type("244092\n"));
+
+        console.log("user locked !!");
+
+    } catch (error) {
+        await login();
+        console.error('Error', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+
+async function deposit(username, amount) {
+    try {
+        await login();
+        // page.waitForNavigation();
         console.log("Redirecting");
 
         await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
@@ -201,24 +248,75 @@ async function lockUser(username) {
 
         // Wait for the search input field and type username
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
-        const searchInput = await page.$('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input');
-        await searchInput.type(username + '\n');
+
+        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
+            .then(element => element.type(username + "\n"));
         await page.waitForSelector(`span[title='${username}']`);
         console.log("searching username");
 
-        let js = `
-        document.querySelector('span[title="${username}"]').parentElement.parentElement.children[6].firstChild.children[2].click();`;
-        let res = await page.evaluate(js);
-        res = await page.evaluate(`document.querySelector('ul[role="tablist"]').children[2].firstChild.click();`);
+        await page.evaluate(`document.querySelector('span[title="aaa675"').parentElement.parentElement.children[1].children[0].click();`);
+        await page.evaluate(`document.querySelector('ul[role="tablist"]').children[0].firstChild.click();`);
 
-        res = await page.evaluate(`document.querySelector('form[data-vv-scope="UserLock"]').children[1].children[1].firstChild.click();`)
-
-        await page.waitForSelector('input[name="UserLockMpassword"]', { timeout: 120000 })
+        await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 120000 })
+            .then(element => element.type(amount));
+        console.log("entered pass");
+        await page.waitForSelector('input[name="userCreditUpdatempassword"]', { timeout: 120000 })
             .then(element => element.type("244092\n"));
 
-        console.log("user locked !!");
+        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show');
+        let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
+        if (msg !== null) {
+            return {
+                success: false, error: msg
+            };
+        };
+
 
     } catch (error) {
+        await login();
+        console.error('Error', error.message);
+        return { success: false, error: error.message };
+    }
+}
+
+async function withdraw(username, amount) {
+    try {
+        await login();
+        // page.waitForNavigation();
+        console.log("Redirecting");
+
+        await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
+        page.waitForNavigation();
+        console.log("Redirected");
+
+        // Wait for the search input field and type username
+        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
+
+        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
+            .then(element => element.type(username + "\n"));
+        await page.waitForSelector(`span[title='${username}']`);
+        console.log("searching username");
+
+        await page.evaluate(`document.querySelector('span[title="aaa675"').parentElement.parentElement.children[1].firstChild.click();`);
+
+        await page.evaluate(`document.querySelector('ul[role="tablist"]').children[1].firstChild.click();`);
+
+        await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 120000 })
+            .then(element => element.type(amount));
+        console.log("entered pass");
+        await page.waitForSelector('input[name="userWithdrawCreditUpdatempassword"]', { timeout: 120000 })
+            .then(element => element.type("244092\n"));
+
+        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show');
+        let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
+
+        return {
+            success: false, error: msg
+        };
+
+
+    } catch (error) {
+        await login();
         console.error('Error', error.message);
         return { success: false, error: error.message };
     }
