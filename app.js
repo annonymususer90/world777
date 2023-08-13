@@ -49,7 +49,6 @@ app.post('/changepass', async (req, res) => {
 
         const result = await changePass(username, pass, confirmpass);
 
-        // Return success message
         res.json({ message: 'Password Change successful', result });
     } catch (error) {
         console.error('Error during password change:', error.message);
@@ -104,22 +103,10 @@ async function register(username) {
 
     try {
         await login();
-        page.waitForNavigation();
         await page.goto('https://goexch777.com/admin/users/insertuser', { timeout: 120000 });
-
-        page.waitForNavigation();
 
         await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[1]/input', { timeout: 120000 })
             .then(element => element.type(username));
-
-        let anim = await page.waitForSelector('.form-control.animation.is-invalid', { timeout: 90000 });
-
-        if (anim !== null) {
-            return {
-                success: false,
-                error: "Invalid Username"
-            };
-        };
 
         await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[2]/input', { timeout: 120000 })
             .then(element => element.type(username));
@@ -131,6 +118,17 @@ async function register(username) {
             .then(element => element.select('7'));
         await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[2]/div/div/div[5]/input', { timeout: 120000 })
             .then(element => element.type('244092\n'));
+
+        await page.waitForNavigation({ timeout: 1000 })
+            .then(() => console.log("waited for navigation"))
+            .catch(async err => {
+                let url = await page.url();
+                if (url !== null && url !== "https://goexch777.com/admin/activeusers") {
+                    throw new Exception("invalid username");
+                }
+            });
+
+        return { success: true }
 
     } catch (error) {
         console.error('Error', error.message);
@@ -168,11 +166,9 @@ function isRememberCookiePresent(cookies) {
 async function changePass(username, pass, confirmpass) {
     try {
         await login();
-        page.waitForNavigation();
         console.log("Redirecting");
 
         await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        page.waitForNavigation();
         console.log("Redirected");
 
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
@@ -208,7 +204,6 @@ async function lockUser(username) {
         console.log("Redirecting");
 
         await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        page.waitForNavigation();
         console.log("Redirected");
 
 
@@ -224,7 +219,7 @@ async function lockUser(username) {
 
 
         await page.waitForSelector('input[name="UserLockMpassword"]')
-            .then(element => element.type("244092\n"));
+            .then(async element => await element.type("244092\n"));
 
         console.log("user locked !!");
 
@@ -243,7 +238,6 @@ async function deposit(username, amount) {
         console.log("Redirecting");
 
         await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        page.waitForNavigation();
         console.log("Redirected");
 
         // Wait for the search input field and type username
@@ -254,7 +248,7 @@ async function deposit(username, amount) {
         await page.waitForSelector(`span[title='${username}']`);
         console.log("searching username");
 
-        await page.evaluate(`document.querySelector('span[title="aaa675"').parentElement.parentElement.children[1].children[0].click();`);
+        await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].children[0].click();`);
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[0].firstChild.click();`);
 
         await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 120000 })
@@ -265,13 +259,17 @@ async function deposit(username, amount) {
 
         await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show');
         let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
-        if (msg !== null) {
+        console.log(msg);
+        if (msg.includes("Your Client Does Not Have Sufficient Credit")) {
             return {
                 success: false, error: msg
             };
         };
 
-
+        return {
+            success: true,
+            message: msg
+        };
     } catch (error) {
         await login();
         console.error('Error', error.message);
@@ -286,7 +284,6 @@ async function withdraw(username, amount) {
         console.log("Redirecting");
 
         await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        page.waitForNavigation();
         console.log("Redirected");
 
         // Wait for the search input field and type username
@@ -297,7 +294,7 @@ async function withdraw(username, amount) {
         await page.waitForSelector(`span[title='${username}']`);
         console.log("searching username");
 
-        await page.evaluate(`document.querySelector('span[title="aaa675"').parentElement.parentElement.children[1].firstChild.click();`);
+        await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].firstChild.click();`);
 
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[1].firstChild.click();`);
 
@@ -310,8 +307,15 @@ async function withdraw(username, amount) {
         await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show');
         let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
 
+        if (msg.includes("Your Client Does Not Have Sufficient Balance")) {
+            return {
+                success: false, error: msg
+            };
+        };
+
         return {
-            success: false, error: msg
+            success: true,
+            message: msg
         };
 
 
