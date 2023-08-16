@@ -13,13 +13,29 @@ var page;
 var logger;
 var rememberMe;
 
-async function infoAsync(msg) {
-    await logger.info(msg);
-}
+const infoAsync = async (message) => {
+    return new Promise((resolve, reject) => {
+        logger.info(message, (err) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
+        });
+    });
+};
 
-async function errorAsync(msg) {
-    await logger.error(msg);
-}
+const errorAsync = async (message) => {
+    return new Promise((resolve, reject) => {
+        logger.error(message, (err) => {
+            if (err) {
+                reject(err);
+            } else {
+                resolve();
+            }
+        });
+    });
+};
 
 // app startup
 (async function () {
@@ -35,11 +51,11 @@ async function errorAsync(msg) {
 
     logger = winston.createLogger({
         level: 'info',
-        format: winston.format.json(),
-        // format: combine(
-        //     timestamp(),
-        //     logFormat
-        // ),
+        // format: winston.format.json(),
+        format: combine(
+            timestamp(),
+            logFormat
+        ),
         transports: [
             new winston.transports.Console(),
             new winston.transports.File({ filename: 'error.log', level: 'error' }),
@@ -50,9 +66,15 @@ async function errorAsync(msg) {
     await login();
 })();
 
+const corsOptions = null//{
+//     origin: 'https://appdomain.com',
+//     methods: 'POST', 
+//     credentials: false, 
+//     optionsSuccessStatus: 204
+// };
 
 app.use(express.json());
-app.use(cors());
+app.use(cors(corsOptions));
 app.use((req, res, next) => {
     infoAsync(`Received request: ${req.method} ${req.originalUrl}`);
     const startTime = new Date();
@@ -170,7 +192,6 @@ async function register(username) {
             .then(element => element.type('244092\n'));
 
         await page.waitForNavigation({ timeout: 1000 })
-            .then(() => console.log("waited for navigation"))
             .catch(async err => {
                 let url = await page.url();
                 if (url !== null && url !== "https://goexch777.com/admin/activeusers") {
@@ -363,7 +384,7 @@ async function withdraw(username, amount) {
     }
 }
 
-app.listen(PORT, () => logger.info('server up and running'));
+app.listen(PORT);
 
 process.on('SIGINT', () => {
     browser.close();
