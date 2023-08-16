@@ -1,29 +1,26 @@
-// app.js
+
 const express = require('express');
 const puppeteer = require('puppeteer');
+const cors = require('cors');
 
 const app = express();
 const PORT = 3000;
-// Middleware to parse JSON data in the request body
-app.use(express.json());
 
+app.use(express.json());
+app.use(cors());
 
 var browser;
 var page;
 
-async function startup() {
+(async function () {
     browser = await puppeteer.launch({
         headless: false,
         timeout: 120000,
         defaultViewport: { width: 1300, height: 800 },
     });
     page = await browser.newPage();
-
-    await page.goto('https://goexch777.com/admin', { timeout: 90000 });
     await login();
-}
-
-startup();
+})();
 
 
 // POST endpoint for user registration
@@ -100,7 +97,7 @@ app.post('/lockuser', async (req, res) => {
 });
 
 async function register(username) {
-
+    let page = await browser.newPage();
     try {
         await login();
         await page.goto('https://goexch777.com/admin/users/insertuser', { timeout: 120000 });
@@ -132,23 +129,30 @@ async function register(username) {
 
     } catch (error) {
         console.error('Error', error.message);
-        return { success: false, error: error.message };
+        return { success: false, error: "invalid username" };
+    } finally {
+        page.close();
     }
 }
 
 
 async function login() {
-    let cookies = await page.cookies();
+    try {
+        let cookies = await page.cookies();
 
-    if (!isRememberCookiePresent(cookies)) {
-        await page.waitForXPath('/html/body/div[2]/div/div/div/div[1]/div[3]/button')
-            .then(element => element.click());
-        await page.waitForSelector('#input-1');
-        await page.type('#input-1', 'Xgoapi');
-        await page.type('#input-2', 'More1234');
-        await page.evaluate(`document.querySelector('form[data-vv-scope="form-login"]').children[2].firstChild.click();`);
-        await page.waitForNavigation({ timeout: 90000 });
-        console.log('login successful');
+        if (!isRememberCookiePresent(cookies)) {
+            await page.goto('https://goexch777.com/admin', { timeout: 90000 });
+            await page.waitForXPath('/html/body/div[2]/div/div/div/div[1]/div[3]/button')
+                .then(element => element.click());
+            await page.waitForSelector('#input-1');
+            await page.type('#input-1', 'Xgoapi');
+            await page.type('#input-2', 'More1234');
+            await page.evaluate(`document.querySelector('form[data-vv-scope="form-login"]').children[2].firstChild.click();`);
+            await page.waitForNavigation({ timeout: 90000 });
+            console.log('login successful');
+        }
+    } catch (err) {
+
     }
 }
 
@@ -164,6 +168,8 @@ function isRememberCookiePresent(cookies) {
 
 
 async function changePass(username, pass, confirmpass) {
+    let page = await browser.newPage();
+
     try {
         await login();
         console.log("Redirecting");
@@ -174,7 +180,10 @@ async function changePass(username, pass, confirmpass) {
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
         const searchInput = await page.$('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input');
         await searchInput.type(username + '\n');
-        await page.waitForSelector(`span[title='${username}']`);
+        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 }).catch(() => {
+            throw new Error("invalid username");
+        });
+
         console.log("searching username");
 
         let js = `
@@ -194,10 +203,13 @@ async function changePass(username, pass, confirmpass) {
     } catch (error) {
         console.error('Error', error.message);
         return { success: false, error: error.message };
+    } finally {
+        page.close();
     }
 }
 
 async function lockUser(username) {
+    let page = await browser.newPage();
     try {
         await login();
 
@@ -211,7 +223,10 @@ async function lockUser(username) {
 
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
             .then(element => element.type(username + "\n"));
-        await page.waitForSelector(`span[title='${username}']`);
+        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 })
+            .catch(() => {
+                throw new Error("invalid username");
+            });
         console.log("searching username");
 
         await page.evaluate(`document.querySelector('span[title="${username}"]').parentElement.parentElement.children[6].firstChild.children[2].click();`);
@@ -227,11 +242,14 @@ async function lockUser(username) {
         await login();
         console.error('Error', error.message);
         return { success: false, error: error.message };
+    } finally {
+        page.close();
     }
 }
 
 
 async function deposit(username, amount) {
+    let page = await browser.newPage();
     try {
         await login();
         // page.waitForNavigation();
@@ -245,16 +263,28 @@ async function deposit(username, amount) {
 
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
             .then(element => element.type(username + "\n"));
-        await page.waitForSelector(`span[title='${username}']`);
+        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 }).catch(() => {
+            throw new Error("invalid username");
+        });
         console.log("searching username");
 
         await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].children[0].click();`);
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[0].firstChild.click();`);
 
-        await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 120000 })
-            .then(element => element.type(amount));
+        // await page.evaluate(`document.querySelector('input[name="userCreditUpdateamount"]').value = '${amount}';`, { timeout: 3000 });
+
+        const element = await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 30000 });
+        await element.type(amount);
+
+        await page.evaluate((amount) => {
+            const element = document.querySelector('input[name="userCreditUpdateamount"]');
+            if (element && element.value !== amount) {
+                element.value = amount;
+            }
+        }, amount);
+
         console.log("entered pass");
-        await page.waitForSelector('input[name="userCreditUpdatempassword"]', { timeout: 120000 })
+        await page.waitForSelector('input[name="userCreditUpdatempassword"]', { timeout: 30000 })
             .then(element => element.type("244092\n"));
 
         await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show');
@@ -274,33 +304,45 @@ async function deposit(username, amount) {
         await login();
         console.error('Error', error.message);
         return { success: false, error: error.message };
+    } finally {
+        page.close();
     }
 }
 
 async function withdraw(username, amount) {
+    let page = await browser.newPage();
     try {
         await login();
         // page.waitForNavigation();
-        console.log("Redirecting");
 
         await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        console.log("Redirected");
 
         // Wait for the search input field and type username
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
 
         await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
             .then(element => element.type(username + "\n"));
-        await page.waitForSelector(`span[title='${username}']`);
-        console.log("searching username");
+        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 }).catch(() => {
+            throw new Error("invalid username");
+        });
 
         await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].firstChild.click();`);
 
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[1].firstChild.click();`);
 
-        await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 120000 })
-            .then(element => element.type(amount));
-        console.log("entered pass");
+        // await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 120000 })
+        //     .then(element => element.type(amount));
+
+        const element = await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 30000 });
+        await element.type(amount);
+
+        await page.evaluate((amount) => {
+            const element = document.querySelector('input[name="userWithdrawCreditUpdateamount"]');
+            if (element && element.value !== amount) {
+                element.value = amount;
+            }
+        }, amount);
+
         await page.waitForSelector('input[name="userWithdrawCreditUpdatempassword"]', { timeout: 120000 })
             .then(element => element.type("244092\n"));
 
@@ -321,15 +363,13 @@ async function withdraw(username, amount) {
 
     } catch (error) {
         await login();
-        console.error('Error', error.message);
         return { success: false, error: error.message };
+    } finally {
+        page.close();
     }
 }
 
-
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+app.listen(PORT);
 
 process.on('SIGINT', () => {
     browser.close();
