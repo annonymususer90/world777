@@ -4,6 +4,7 @@ const cors = require('cors');
 const winston = require('winston');
 const { combine, timestamp, printf } = winston.format;
 const apputils = require('./apputils');
+require('dotenv').config();
 
 const app = express();
 const PORT = 3000;
@@ -39,6 +40,16 @@ const errorAsync = async (message) => {
 // app startup
 (async function () {
     browser = await puppeteer.launch({
+        args: [
+            "--disable-setuid-sandbox",
+            "--no-sandbox",
+            "--single-process",
+            "--no-zygote",
+        ],
+		executablePath: 
+            process.env.NODE_ENV === "production"
+            ? process.env.PUPPETEER_EXECUTABLE_PATH
+            : puppeteer.executablePath(),
         headless: 'new',
         timeout: 120000,
         defaultViewport: { width: 1300, height: 800 },
@@ -71,7 +82,7 @@ const allowedDomains = [
 
 const corsOptions = {
 
-    origin: allowedDomains,
+    origin: null,//allowedDomains,
 
     methods: 'POST',
 
