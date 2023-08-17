@@ -65,12 +65,21 @@ const errorAsync = async (message) => {
     await login();
 })();
 
-const corsOptions = null//{
-//     origin: 'https://appdomain.com',
-//     methods: 'POST', 
-//     credentials: false, 
-//     optionsSuccessStatus: 204
-// };
+const allowedDomains = [
+    'http://fgpunt.com',
+    'https://fgpunt.com'
+];
+
+const corsOptions = {
+
+    origin: allowedDomains,
+
+    methods: 'POST',
+
+    credentials: false,
+
+    optionsSuccessStatus: 204
+};
 
 app.use(express.json());
 app.use(cors(corsOptions));
