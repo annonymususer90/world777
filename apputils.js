@@ -18,4 +18,57 @@ function cleanOldLogFiles(logDirectory, maxAgeInMonths) {
     });
 }
 
-module.exports = cleanOldLogFiles;
+function isValidAmount(amount) {
+    if (typeof amount !== 'string') {
+        return false;
+    }
+
+    // Use regular expression to check if the string consists of digits and an optional decimal point
+    if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+        return false;
+    }
+
+    // Convert the string to a number and check if it's a valid numerical value
+    const numericValue = parseFloat(amount);
+    if (isNaN(numericValue) || numericValue <= 0) {
+        return false;
+    }
+
+    return true;
+}
+
+// logger middleware
+// app.use((req, res, next) => {
+//     infoAsync(`Received request: ${req.method} ${req.originalUrl}`);
+//     const startTime = new Date();
+
+//     const originalSend = res.send;
+//     res.send = function (data) {
+//         const endTime = new Date();
+//         const responseTime = endTime - startTime;
+//         infoAsync(`Sent response: ${req.method} ${req.originalUrl} - ${res.statusCode} (${responseTime} ms)`);
+//         originalSend.call(this, data);
+//     };
+
+//     const originalJson = res.json;
+//     res.json = function (data) {
+//         if (res.statusCode >= 400) {
+//             errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}`);
+//         }
+//         originalJson.call(this, data);
+//     };
+
+//     const originalEnd = res.end;
+//     res.end = function (data) {
+//         if (res.statusCode >= 400) {
+//             errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}`);
+//         }
+//         originalEnd.call(this, data);
+//     };
+
+//     next();
+// });
+
+module.exports = {
+    isValidAmount: isValidAmount
+};

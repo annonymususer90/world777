@@ -1,9 +1,9 @@
-
 const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
 const winston = require('winston');
 const { combine, timestamp, printf } = winston.format;
+const apputils = require('./apputils');
 
 const app = express();
 const PORT = 3000;
@@ -11,7 +11,6 @@ const PORT = 3000;
 var browser;
 var page;
 var logger;
-var rememberMe;
 
 const infoAsync = async (message) => {
     return new Promise((resolve, reject) => {
@@ -40,7 +39,7 @@ const errorAsync = async (message) => {
 // app startup
 (async function () {
     browser = await puppeteer.launch({
-        headless: false,
+        headless: 'new',
         timeout: 120000,
         defaultViewport: { width: 1300, height: 800 },
     });
@@ -58,8 +57,8 @@ const errorAsync = async (message) => {
         ),
         transports: [
             new winston.transports.Console(),
-            new winston.transports.File({ filename: 'error.log', level: 'error' }),
-            new winston.transports.File({ filename: 'combined.log' }),
+            new winston.transports.File({ filename: 'log/error.log', level: 'error' }),
+            new winston.transports.File({ filename: 'log/combined.log' }),
         ]
     });
     page = await browser.newPage();
@@ -75,36 +74,6 @@ const corsOptions = null//{
 
 app.use(express.json());
 app.use(cors(corsOptions));
-app.use((req, res, next) => {
-    infoAsync(`Received request: ${req.method} ${req.originalUrl}`);
-    const startTime = new Date();
-
-    const originalSend = res.send;
-    res.send = function (data) {
-        const endTime = new Date();
-        const responseTime = endTime - startTime;
-        infoAsync(`Sent response: ${req.method} ${req.originalUrl} - ${res.statusCode} (${responseTime} ms)`);
-        originalSend.call(this, data);
-    };
-
-    const originalJson = res.json;
-    res.json = function (data) {
-        if (res.statusCode >= 400) {
-            errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}`);
-        }
-        originalJson.call(this, data);
-    };
-
-    const originalEnd = res.end;
-    res.end = function (data) {
-        if (res.statusCode >= 400) {
-            errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}`);
-        }
-        originalEnd.call(this, data);
-    };
-
-    next();
-});
 
 app.post('/register', async (req, res) => {
     try {
@@ -122,8 +91,8 @@ app.post('/register', async (req, res) => {
 
 app.post('/changepass', async (req, res) => {
     try {
-        const { username, pass, confirmpass } = req.body;
-        const result = await changePass(username, pass, confirmpass);
+        const { username, pass } = req.body;
+        const result = await changePass(username, pass);
 
         res.json({ message: 'Password Change successful', result });
     } catch (error) {
@@ -135,13 +104,26 @@ app.post('/deposit', async (req, res) => {
     try {
         const { username, amount } = req.body;
 
+        if (!apputils.isValidAmount(amount)) {
+            res.status(400).json({ message: "invalid amount format" });
+            return;
+        }
+
+        infoAsync(`Received request: ${req.method} ${req.originalUrl}, User: ${username}, Amount: ${amount}`);
+        const startTime = new Date();
         const result = await deposit(username, amount);
-        if (result.success == false)
+        const endTime = new Date();
+        responseTime = endTime - startTime;
+        if (result.success == false) {
             res.status(400).json({ message: 'deposit not successful', result });
-        else
+            errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Message: ${result.message} (${responseTime} ms)`);
+        } else {
             res.json({ message: 'deposited successfully', result });
+            infoAsync(`Sent response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Amount: ${amount}, Response Message: ${result.message} (${responseTime} ms)`);
+        }
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
+        errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}, Message: ${error.message}`);
     }
 });
 
@@ -149,11 +131,23 @@ app.post('/withdraw', async (req, res) => {
     try {
         const { username, amount } = req.body;
 
+        if (!apputils.isValidAmount(amount)) {
+            res.status(400).json({ message: "invalid amount format" });
+            return;
+        }
+
+        infoAsync(`Received request: ${req.method} ${req.originalUrl}, User: ${username}, Amount: ${amount}`);
+        const startTime = new Date();
         const result = await withdraw(username, amount);
-        if (result.success == false)
+        const endTime = new Date();
+        const responseTime = endTime - startTime;
+        if (result.success == false) {
             res.status(400).json({ message: 'withdraw not successful', result });
-        else
+            errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Message: ${result.message} (${responseTime} ms)`);
+        } else {
             res.json({ message: 'Withdrawn successfully', result });
+            infoAsync(`Sent response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Amount: ${amount}, Response Message: ${result.message} (${responseTime} ms)`);
+        }
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -222,19 +216,16 @@ async function login() {
             await page.type('#input-2', 'More1234');
             await page.evaluate(`document.querySelector('form[data-vv-scope="form-login"]').children[2].firstChild.click();`);
             await page.waitForNavigation({ timeout: 90000 });
-            await page.setCookie(rememberMe);
             infoAsync('admin login successful');
         }
     } catch (err) {
-        errorAsync('admin login unsuccessful');
+        errorAsync(`admin login unsuccessful: ${err.message}`);
     }
 }
 
 function isRememberCookiePresent(cookies) {
     for (const cookie of cookies) {
         if (cookie.name === 'rememberMe') {
-            cookie.value = 'true';
-            rememberMe = cookie;
             return true;
         }
     }
@@ -242,7 +233,7 @@ function isRememberCookiePresent(cookies) {
 }
 
 
-async function changePass(username, pass, confirmpass) {
+async function changePass(username, pass) {
     let page = await browser.newPage();
 
     try {
@@ -264,7 +255,7 @@ async function changePass(username, pass, confirmpass) {
         await page.waitForSelector('input[name="userchangepasswordpassword"]', { timeout: 120000 })
             .then(element => element.type(pass));
         await page.waitForSelector('input[name="userchangepasswordcpassword"]', { timeout: 120000 })
-            .then(element => element.type(confirmpass));
+            .then(element => element.type(pass));
         await page.waitForSelector('input[name="userchangepasswordmpassword"]', { timeout: 120000 })
             .then(element => element.type("244092\n"));
     } catch (error) {
@@ -312,7 +303,7 @@ async function deposit(username, amount) {
         });
         await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].children[0].click();`);
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[0].firstChild.click();`);
-        const element = await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 30000 });
+        const element = await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 120000 });
         await element.type(amount);
         await page.evaluate((amount) => {
             const element = document.querySelector('input[name="userCreditUpdateamount"]');
@@ -322,12 +313,12 @@ async function deposit(username, amount) {
         }, amount);
         await page.waitForSelector('input[name="userCreditUpdatempassword"]', { timeout: 30000 })
             .then(element => element.type("244092\n"));
-        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show');
+        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show', { timeout: 120000 });
         let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
 
         if (msg.includes("Your Client Does Not Have Sufficient Credit")) {
             return {
-                success: false, error: msg
+                success: false, message: msg
             };
         };
         return {
@@ -335,7 +326,7 @@ async function deposit(username, amount) {
             message: msg
         };
     } catch (error) {
-        return { success: false, error: error.message };
+        return { success: false, message: error.message };
     } finally {
         page.close();
     }
@@ -354,7 +345,7 @@ async function withdraw(username, amount) {
         });
         await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].firstChild.click();`);
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[1].firstChild.click();`);
-        const element = await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 30000 });
+        const element = await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 120000 });
         await element.type(amount);
         await page.evaluate((amount) => {
             const element = document.querySelector('input[name="userWithdrawCreditUpdateamount"]');
@@ -364,12 +355,12 @@ async function withdraw(username, amount) {
         }, amount);
         await page.waitForSelector('input[name="userWithdrawCreditUpdatempassword"]', { timeout: 120000 })
             .then(element => element.type("244092\n"));
-        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show');
+        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show', { timeout: 120000 });
         let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
 
         if (msg.includes("Your Client Does Not Have Sufficient Balance")) {
             return {
-                success: false, error: msg
+                success: false, message: msg
             };
         };
         return {
