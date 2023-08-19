@@ -68,8 +68,8 @@ const errorAsync = async (message) => {
         ),
         transports: [
             new winston.transports.Console(),
-            new winston.transports.File({ filename: process.env.LOG_DIR + "error.log", level: 'error' }),
-            new winston.transports.File({ filename: process.env.LOG_DIR + "combined.log" }),
+            //new winston.transports.File({ filename: process.env.LOG_DIR + "error.log", level: 'error' }),
+            //new winston.transports.File({ filename: process.env.LOG_DIR + "combined.log" }),
         ]
     });
     page = await browser.newPage();
