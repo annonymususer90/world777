@@ -7,7 +7,7 @@ const apputils = require('./apputils');
 require('dotenv').config();
 
 const app = express();
-const PORT = 80;
+const PORT = 3000;
 
 var browser;
 var page;
