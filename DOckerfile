@@ -15,7 +15,3 @@ COPY . .
 EXPOSE 3000
 
 CMD ["node", "app.js"]
-
-
-proxy bot api key
-2d4c06983a163a3cb67bb131c8838097
