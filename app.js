@@ -7,7 +7,7 @@ const apputils = require('./apputils');
 require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
+const PORT = 80;
 
 var browser;
 var page;
@@ -45,6 +45,7 @@ const errorAsync = async (message) => {
             "--no-sandbox",
             "--single-process",
             "--no-zygote",
+            "--disable-gpu",
         ],
 		executablePath: 
             process.env.NODE_ENV === "production"
@@ -67,8 +68,8 @@ const errorAsync = async (message) => {
         ),
         transports: [
             new winston.transports.Console(),
-            new winston.transports.File({ filename: '/var/log/game/error.log', level: 'error' }),
-            new winston.transports.File({ filename: '/var/log/game/combined.log' }),
+            new winston.transports.File({ filename: process.env.LOG_DIR + "error.log", level: 'error' }),
+            new winston.transports.File({ filename: process.env.LOG_DIR + "combined.log" }),
         ]
     });
     page = await browser.newPage();
@@ -84,7 +85,7 @@ const corsOptions = {
 
     origin: null,//allowedDomains,
 
-    methods: 'POST',
+    methods: 'POST, GET',
 
     credentials: false,
 
@@ -93,6 +94,10 @@ const corsOptions = {
 
 app.use(express.json());
 app.use(cors(corsOptions));
+
+app.get("/", (req, res) => {
+    res.send("server up and running");
+})
 
 app.post('/register', async (req, res) => {
     try {
