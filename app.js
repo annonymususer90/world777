@@ -41,11 +41,12 @@ const errorAsync = async (message) => {
 (async function () {
     browser = await puppeteer.launch({
         args: [
-            "--disable-setuid-sandbox",
-            "--no-sandbox",
-            "--single-process",
-            "--no-zygote",
-            "--disable-gpu",
+            '--disable-setuid-sandbox',
+            '--no-sandbox',
+            '--single-process',
+            '--no-zygote',
+            '--disable-gpu',
+			'--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36"',
         ],
 		executablePath: 
             process.env.NODE_ENV === "production"
