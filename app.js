@@ -46,13 +46,12 @@ const errorAsync = async (message) => {
             '--single-process',
             '--no-zygote',
             '--disable-gpu',
-			'--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3312.0 Safari/537.36"',
         ],
 		executablePath: 
             process.env.NODE_ENV === "production"
             ? process.env.PUPPETEER_EXECUTABLE_PATH
             : puppeteer.executablePath(),
-        headless: 'new',
+        headless: false,//'new',
         timeout: 120000,
         defaultViewport: { width: 1300, height: 800 },
     });
@@ -233,7 +232,7 @@ async function login() {
         let cookies = await page.cookies();
 
         if (!isRememberCookiePresent(cookies)) {
-            await page.goto('https://goexch777.com/admin', { timeout: 90000 });
+            await page.goto(proxy + 'https://goexch777.com/admin', { timeout: 90000 });
             await page.waitForXPath('/html/body/div[2]/div/div/div/div[1]/div[3]/button')
                 .then(element => element.click());
             await page.waitForSelector('#input-1');
