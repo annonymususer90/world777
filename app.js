@@ -1,45 +1,27 @@
+const { existsSync } = require('fs');
 const express = require('express');
-const puppeteer = require('puppeteer');
 const cors = require('cors');
-const winston = require('winston');
-const { combine, timestamp, printf } = winston.format;
-const apputils = require('./apputils');
+const puppeteer = require('puppeteer');
+const { infoAsync, errorAsync, warnAsync, isValidAmount } = require('./apputils');
+const { login, register, lockUser, deposit, withdraw, changePass } = require('./browse');
+
 require('dotenv').config();
 
 const app = express();
 const PORT = 3000;
-
-var browser;
-var page;
-var logger;
-
-const infoAsync = async (message) => {
-    return new Promise((resolve, reject) => {
-        logger.info(message, (err) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve();
-            }
-        });
-    });
+const loginCache = new Map();
+const allowedDomains = ['http://fgpunt.com', 'https://fgpunt.com'];
+const corsOptions = {
+    origin: allowedDomains,
+    methods: 'POST, GET',
+    credentials: false,
+    optionsSuccessStatus: 204
 };
 
-const errorAsync = async (message) => {
-    return new Promise((resolve, reject) => {
-        logger.error(message, (err) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve();
-            }
-        });
-    });
-};
-
-// app startup
-(async function () {
-    browser = await puppeteer.launch({
+var b;
+// setup the browser
+(async () => {
+    b = await puppeteer.launch({
         args: [
             '--disable-setuid-sandbox',
             '--no-sandbox',
@@ -47,62 +29,86 @@ const errorAsync = async (message) => {
             '--no-zygote',
             '--disable-gpu',
         ],
-		executablePath: 
+        executablePath:
             process.env.NODE_ENV === "production"
-            ? process.env.PUPPETEER_EXECUTABLE_PATH
-            : puppeteer.executablePath(),
-        headless: false,//'new',
+                ? process.env.PUPPETEER_EXECUTABLE_PATH
+                : puppeteer.executablePath(),
+        headless: true,
         timeout: 120000,
         defaultViewport: { width: 1300, height: 800 },
     });
-
-    const logFormat = printf(({ level, message, timestamp }) => {
-        return `${timestamp} ${level}: ${message}`;
-    });
-
-    logger = winston.createLogger({
-        level: 'info',
-        format: combine(
-            timestamp(),
-            logFormat
-        ),
-        transports: [
-            new winston.transports.Console(),
-            //new winston.transports.File({ filename: process.env.LOG_DIR + "error.log", level: 'error' }),
-            //new winston.transports.File({ filename: process.env.LOG_DIR + "combined.log" }),
-        ]
-    });
-    page = await browser.newPage();
-    await login();
 })();
-
-const allowedDomains = [
-    'http://fgpunt.com',
-    'https://fgpunt.com'
-];
-
-const corsOptions = {
-
-    origin: null,//allowedDomains,
-
-    methods: 'POST, GET',
-
-    credentials: false,
-
-    optionsSuccessStatus: 204
-};
 
 app.use(express.json());
 app.use(cors(corsOptions));
+app.use(async (req, res, next) => {
+    if (req.path !== '/login' && req.path !== '/logs') {
+        const { url } = req.body;
+        if (!loginCache.get(url)) {
+            res.status(401).json({ message: 'login details not available' });
+            return;
+        }
+        if (!loginCache.get(url).page) {
+            loginCache.get(url).page = await b.newPage();
+        }
 
-app.get("/", (req, res) => {
-    res.send("server up and running");
-})
+        let pageUrl = await loginCache.get(url).page.url();
+        if (pageUrl !== `${url}/home`) {
+            await login(loginCache.get(url).page, url, loginCache.get(url).username, loginCache.get(url).password);
+        }
+    }
+    next();
+});
+
+app.post('/login', async (req, res) => {
+    const isLogin = async (url) => {
+        if (!loginCache.get(url)) {
+            return false;
+        }
+        const page = loginCache.get(url).page;
+        if (!page) {
+            return false;
+        }
+
+        const pageUrl = await page.url();
+        if (pageUrl !== `${url}/home`) {
+            return false;
+        }
+
+        return true;
+    }
+
+    const { url, username, password } = req.body;
+    try {
+        let flag = await isLogin(url);
+        if (!flag) {
+            let page = loginCache.get(url)?.page;
+            if (page === undefined) {
+                page = await b.newPage();
+            }
+
+            loginCache.set(url, {
+                page: page,
+                username: username,
+                password: password
+            });
+            await login(page, url, username, password);
+            res.status(200).json({ message: 'login success to url ' + url });
+            return;
+        }
+        res.json({ message: 'login success to url ' + url });
+    } catch (ex) {
+        errorAsync(ex.message);
+        res.status(400).json({ message: 'login unsuccess to ' + url });
+    }
+});
 
 app.post('/register', async (req, res) => {
+    const page = await b.newPage();
+    const { url, username, tCode } = req.body;
+
     try {
-        const { username } = req.body;
-        const result = await register(username);
+        const result = await register(page, url, username, tCode);
         if (result.success == false)
             res.status(400).json({ message: 'User registration not successful', result });
         else
@@ -110,297 +116,127 @@ app.post('/register', async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
         errorAsync(`request responded with error: ${error.message}`);
+    } finally {
+        page.close();
     }
 });
 
 app.post('/changepass', async (req, res) => {
-    try {
-        const { username, pass } = req.body;
-        const result = await changePass(username, pass);
+    const page = await b.newPage();
+    const { url, username, pass } = req.body;
 
+    try {
+        const result = await changePass(page, url, username, pass);
         res.json({ message: 'Password Change successful', result });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
+        errorAsync(error.message);
+    } finally {
+        page.close();
     }
 });
 
 app.post('/deposit', async (req, res) => {
+    const { url, username, amount, tCode } = req.body;
+    const page = await b.newPage();
     try {
-        const { username, amount } = req.body;
-
-        if (!apputils.isValidAmount(amount)) {
+        if (!isValidAmount(amount)) {
             res.status(400).json({ message: "invalid amount format" });
             return;
         }
 
-        infoAsync(`Received request: ${req.method} ${req.originalUrl}, User: ${username}, Amount: ${amount}`);
+        infoAsync(`[req] ${url}, user: ${username}, amount: ${amount}`);
         const startTime = new Date();
-        const result = await deposit(username, amount);
+        const result = await deposit(page, url, username, amount, tCode);
         const endTime = new Date();
         responseTime = endTime - startTime;
         if (result.success == false) {
             res.status(400).json({ message: 'deposit not successful', result });
-            errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Message: ${result.message} (${responseTime} ms)`);
+            warnAsync(`[res] url: ${url}, status: ${res.statusCode}, user: ${username}, message: ${result.message} (${responseTime} ms)`);
         } else {
             res.json({ message: 'deposited successfully', result });
-            infoAsync(`Sent response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Amount: ${amount}, Response Message: ${result.message} (${responseTime} ms)`);
+            infoAsync(`[res] url: ${url}, status: ${res.statusCode}, user: ${username}, amount: ${amount}, message: ${result.message} (${responseTime} ms)`);
         }
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
-        errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}, Message: ${error.message}`);
+        errorAsync(`[res] ${url} - ${res.statusCode}, Message: ${error.message}`);
+    } finally {
+        page.close();
     }
 });
 
 app.post('/withdraw', async (req, res) => {
-    try {
-        const { username, amount } = req.body;
+    const { url, username, amount, tCode } = req.body;
+    const page = await b.newPage();
 
-        if (!apputils.isValidAmount(amount)) {
+    try {
+        if (!isValidAmount(amount)) {
             res.status(400).json({ message: "invalid amount format" });
             return;
         }
 
-        infoAsync(`Received request: ${req.method} ${req.originalUrl}, User: ${username}, Amount: ${amount}`);
+        infoAsync(`[req] ${url}, user: ${username}, amount: ${amount}`);
         const startTime = new Date();
-        const result = await withdraw(username, amount);
+        const result = await withdraw(page, url, username, amount, tCode);
         const endTime = new Date();
         const responseTime = endTime - startTime;
         if (result.success == false) {
             res.status(400).json({ message: 'withdraw not successful', result });
-            errorAsync(`Error in response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Message: ${result.message} (${responseTime} ms)`);
+            warnAsync(`[res] url: ${url}, status: ${res.statusCode}, user: ${username}, message: ${result.message} (${responseTime} ms)`);
         } else {
             res.json({ message: 'Withdrawn successfully', result });
-            infoAsync(`Sent response: ${req.method} ${req.originalUrl} - ${res.statusCode}, User: ${username}, Amount: ${amount}, Response Message: ${result.message} (${responseTime} ms)`);
+            infoAsync(`[res] url: ${url}, status: ${res.statusCode}, user: ${username}, amount: ${amount}, message: ${result.message} (${responseTime} ms)`);
         }
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
+        errorAsync(error.message);
+    } finally {
+        page.close();
     }
 });
 
 app.post('/lockuser', async (req, res) => {
+    const { url, username, tCode } = req.body;
+    const page = await b.newPage();
+
     try {
-        const { username } = req.body;
-
-        const result = await lockUser(username);
-
+        const result = await lockUser(page, url, username, tCode);
         res.json({ message: 'User locked successfully', result });
-    } catch (error) {
+    } catch (err) {
         res.status(500).json({ error: 'Internal server error' });
+        errorAsync(err.message);
+    } finally {
+        page.close();
     }
 });
 
-async function register(username) {
-    let page = await browser.newPage();
-    try {
-        await login();
-        await page.goto('https://goexch777.com/admin/users/insertuser', { timeout: 120000 });
+app.get('/logs', (req, res) => {
+    const date = req.body.date;
 
-        await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[1]/input', { timeout: 120000 })
-            .then(element => element.type(username));
-
-        await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[2]/input', { timeout: 120000 })
-            .then(element => element.type(username));
-        await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[3]/input', { timeout: 120000 })
-            .then(element => element.type('Abcd@332211'));
-        await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[1]/div/div/div[4]/input', { timeout: 120000 })
-            .then(element => element.type('Abcd@332211'));
-        await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[2]/div/div/div[2]/select', { timeout: 120000 })
-            .then(element => element.select('7'));
-        await page.waitForXPath('/html/body/div[2]/div/div[2]/div/div/div/form/div/div[2]/div/div/div[5]/input', { timeout: 120000 })
-            .then(element => element.type('244092\n'));
-
-        await page.waitForNavigation({ timeout: 1000 })
-            .catch(async err => {
-                let url = await page.url();
-                if (url !== null && url !== "https://goexch777.com/admin/activeusers") {
-                    throw new Exception("invalid username");
-                }
-            });
-
-        return { success: true }
-
-    } catch (error) {
-        return { success: false, error: "invalid username" };
-    } finally {
-        page.close();
+    if (!date) {
+        return res.status(400).json({ error: 'Date is required in the request body.' });
     }
-}
 
+    if (!/^\d{4}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: 'Invalid date format. Please use yyyy-mm.' });
+    }
 
-async function login() {
-    try {
-        let cookies = await page.cookies();
+    const filePath = `${process.env.LOG_DIRcombined}combined-${date}.log`;
 
-        if (!isRememberCookiePresent(cookies)) {
-            await page.goto(proxy + 'https://goexch777.com/admin', { timeout: 90000 });
-            await page.waitForXPath('/html/body/div[2]/div/div/div/div[1]/div[3]/button')
-                .then(element => element.click());
-            await page.waitForSelector('#input-1');
-            await page.type('#input-1', 'Xgoapi');
-            await page.type('#input-2', 'More1234');
-            await page.evaluate(`document.querySelector('form[data-vv-scope="form-login"]').children[2].firstChild.click();`);
-            await page.waitForNavigation({ timeout: 90000 });
-            infoAsync('admin login successful');
+    if (!existsSync(filePath)) {
+        return res.status(404).json({ error: 'Log file not found.' });
+    }
+
+    res.sendFile(filePath, (err) => {
+        if (err) {
+            errorAsync(err.message);
+            res.status(500).send('Error sending the file.');
         }
-    } catch (err) {
-        errorAsync(`admin login unsuccessful: ${err.message}`);
-    }
-}
-
-function isRememberCookiePresent(cookies) {
-    for (const cookie of cookies) {
-        if (cookie.name === 'rememberMe') {
-            return true;
-        }
-    }
-    return false;
-}
-
-
-async function changePass(username, pass) {
-    let page = await browser.newPage();
-
-    try {
-        await login();
-        await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
-        const searchInput = await page.$('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input');
-        await searchInput.type(username + '\n');
-        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 }).catch(() => {
-            throw new Error("invalid username");
-        });
-
-        let js = `
-        document.querySelector('span[title="${username}"]').parentElement.parentElement.children[6].firstChild.children[2].click();
-        `;
-        let res = await page.evaluate(js);
-        res = await page.evaluate(`document.querySelector('ul[role="tablist"]').children[1].firstChild.click();`);
-
-        await page.waitForSelector('input[name="userchangepasswordpassword"]', { timeout: 120000 })
-            .then(element => element.type(pass));
-        await page.waitForSelector('input[name="userchangepasswordcpassword"]', { timeout: 120000 })
-            .then(element => element.type(pass));
-        await page.waitForSelector('input[name="userchangepasswordmpassword"]', { timeout: 120000 })
-            .then(element => element.type("244092\n"));
-    } catch (error) {
-        return { success: false, error: error.message };
-    } finally {
-        page.close();
-    }
-}
-
-async function lockUser(username) {
-    let page = await browser.newPage();
-    try {
-        await login();
-        await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
-        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
-            .then(element => element.type(username + "\n"));
-        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 })
-            .catch(() => {
-                throw new Error("invalid username");
-            });
-        await page.evaluate(`document.querySelector('span[title="${username}"]').parentElement.parentElement.children[6].firstChild.children[2].click();`);
-        await page.evaluate(`document.querySelector('ul[role="tablist"]').children[2].firstChild.click();`);
-        await page.waitForSelector('input[name="UserLockMpassword"]')
-            .then(async element => await element.type("244092\n"));
-    } catch (error) {
-        await login();
-        return { success: false, error: error.message };
-    } finally {
-        page.close();
-    }
-}
-
-
-async function deposit(username, amount) {
-    let page = await browser.newPage();
-    try {
-        await login();
-        await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
-        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
-            .then(element => element.type(username + "\n"));
-        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 }).catch(() => {
-            throw new Error("invalid username");
-        });
-        await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].children[0].click();`);
-        await page.evaluate(`document.querySelector('ul[role="tablist"]').children[0].firstChild.click();`);
-        const element = await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 120000 });
-        await element.type(amount);
-        await page.evaluate((amount) => {
-            const element = document.querySelector('input[name="userCreditUpdateamount"]');
-            if (element && element.value !== amount) {
-                element.value = amount;
-            }
-        }, amount);
-        await page.waitForSelector('input[name="userCreditUpdatempassword"]', { timeout: 30000 })
-            .then(element => element.type("244092\n"));
-        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show', { timeout: 120000 });
-        let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
-
-        if (msg.includes("Your Client Does Not Have Sufficient Credit")) {
-            return {
-                success: false, message: msg
-            };
-        };
-        return {
-            success: true,
-            message: msg
-        };
-    } catch (error) {
-        return { success: false, message: error.message };
-    } finally {
-        page.close();
-    }
-}
-
-async function withdraw(username, amount) {
-    let page = await browser.newPage();
-    try {
-        await login();
-        await page.goto('https://goexch777.com/admin/users', { timeout: 120000 });
-        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input', { timeout: 120000 });
-        await page.waitForSelector('#layout-wrapper > div.main-content > div > div > div > div.row.account-list > div > div > div > div.row.row5 > div.col-md-6.mb-2.search-form > form > div.d-inline-block.form-group.form-group-feedback.form-group-feedback-right > input')
-            .then(element => element.type(username + "\n"));
-        await page.waitForSelector(`span[title='${username}']`, { timeout: 3000 }).catch(() => {
-            throw new Error("invalid username");
-        });
-        await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].firstChild.click();`);
-        await page.evaluate(`document.querySelector('ul[role="tablist"]').children[1].firstChild.click();`);
-        const element = await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 120000 });
-        await element.type(amount);
-        await page.evaluate((amount) => {
-            const element = document.querySelector('input[name="userWithdrawCreditUpdateamount"]');
-            if (element && element.value !== amount) {
-                element.value = amount;
-            }
-        }, amount);
-        await page.waitForSelector('input[name="userWithdrawCreditUpdatempassword"]', { timeout: 120000 })
-            .then(element => element.type("244092\n"));
-        await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show', { timeout: 120000 });
-        let msg = await page.evaluate(`document.querySelector('div[class="swal2-container swal2-top-end swal2-backdrop-show"]').children[0].children[1].firstChild.innerText;`);
-
-        if (msg.includes("Your Client Does Not Have Sufficient Balance")) {
-            return {
-                success: false, message: msg
-            };
-        };
-        return {
-            success: true,
-            message: msg
-        };
-    } catch (error) {
-        await login();
-        return { success: false, error: error.message };
-    } finally {
-        page.close();
-    }
-}
+    });
+});
 
 app.listen(PORT);
 
 process.on('SIGINT', () => {
-    browser.close();
+    b.close();
 });
