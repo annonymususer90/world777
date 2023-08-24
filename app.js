@@ -1,4 +1,5 @@
 const { existsSync } = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
@@ -210,7 +211,7 @@ app.post('/lockuser', async (req, res) => {
     }
 });
 
-app.get('/logs', (req, res) => {
+app.post('/logs', (req, res) => {
     const date = req.body.date;
 
     if (!date) {
@@ -221,7 +222,7 @@ app.get('/logs', (req, res) => {
         return res.status(400).json({ error: 'Invalid date format. Please use yyyy-mm.' });
     }
 
-    const filePath = `${process.env.LOG_DIRcombined}combined-${date}.log`;
+    const filePath = path.join(__dirname, 'logs', `combined-${date}.log`);
 
     if (!existsSync(filePath)) {
         return res.status(404).json({ error: 'Log file not found.' });
