@@ -9,11 +9,11 @@ const { login, register, lockUser, deposit, withdraw, changePass } = require('./
 require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
+const PORT = 80;
 const loginCache = new Map();
 const allowedDomains = ['http://fgpunt.com', 'https://fgpunt.com'];
 const corsOptions = {
-    origin: allowedDomains,
+    origin: '*',
     methods: 'POST, GET',
     credentials: false,
     optionsSuccessStatus: 204
@@ -43,7 +43,7 @@ var b;
 app.use(express.json());
 app.use(cors(corsOptions));
 app.use(async (req, res, next) => {
-    if (req.path !== '/login' && req.path !== '/logs') {
+    if (req.path !== '/login' && req.path !== '/logs' && req.path !== '/') {
         const { url } = req.body;
         if (!loginCache.get(url)) {
             res.status(401).json({ message: 'login details not available' });
@@ -59,6 +59,10 @@ app.use(async (req, res, next) => {
         }
     }
     next();
+});
+
+app.get('/', (req, res) => {
+    res.send('server up and running');
 });
 
 app.post('/login', async (req, res) => {
