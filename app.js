@@ -10,6 +10,7 @@ require('dotenv').config();
 
 const app = express();
 const PORT = 80;
+const bodyParser = require('body-parser');
 const loginCache = new Map();
 const allowedDomains = ['http://fgpunt.com', 'https://fgpunt.com'];
 const corsOptions = {
@@ -20,7 +21,7 @@ const corsOptions = {
 };
 
 var b;
-// setup the browser
+
 (async () => {
     b = await puppeteer.launch({
         args: [
@@ -41,9 +42,12 @@ var b;
 })();
 
 app.use(express.json());
+app.use(bodyParser.json())
 app.use(cors(corsOptions));
+app.use(express.static('pages'));
+app.use(express.static('service'));
 app.use(async (req, res, next) => {
-    if (req.path !== '/login' && req.path !== '/logs' && req.path !== '/') {
+    if (req.path !== '/login' && req.path !== '/logs' && req.path !== '/' && req.path !== '/addsite' && req.path !== '/getlogs') {
         const { url } = req.body;
         if (!loginCache.get(url)) {
             res.status(401).json({ message: 'login details not available' });
@@ -65,6 +69,15 @@ app.get('/', (req, res) => {
     res.send('server up and running');
 });
 
+app.get('/addsite', (req, res) => {
+    const filePath = path.join(__dirname, 'pages', 'addsite.html');
+    res.sendFile(filePath);
+});
+
+app.get('/getlogs', (req, res) => {
+    const filePath = path.join(__dirname, 'pages', 'downloadlogs.html');
+    res.sendFile(filePath);
+});
 app.post('/login', async (req, res) => {
     const isLogin = async (url) => {
         if (!loginCache.get(url)) {
