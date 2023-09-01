@@ -14,7 +14,7 @@ const bodyParser = require('body-parser');
 const loginCache = new Map();
 const allowedDomains = ['http://fgpunt.com', 'https://fgpunt.com'];
 const corsOptions = {
-    origin: '*',
+    origin: allowedDomains,
     methods: 'POST, GET',
     credentials: false,
     optionsSuccessStatus: 204
@@ -44,8 +44,7 @@ var b;
 app.use(express.json());
 app.use(bodyParser.json())
 app.use(cors(corsOptions));
-app.use(express.static('pages'));
-app.use(express.static('service'));
+app.use(express.static('public'));
 app.use(async (req, res, next) => {
     if (req.path !== '/login' && req.path !== '/logs' && req.path !== '/' && req.path !== '/addsite' && req.path !== '/getlogs') {
         const { url } = req.body;
@@ -70,12 +69,12 @@ app.get('/', (req, res) => {
 });
 
 app.get('/addsite', (req, res) => {
-    const filePath = path.join(__dirname, 'pages', 'addsite.html');
+    const filePath = path.join(__dirname, 'public', 'addsite.html');
     res.sendFile(filePath);
 });
 
 app.get('/getlogs', (req, res) => {
-    const filePath = path.join(__dirname, 'pages', 'downloadlogs.html');
+    const filePath = path.join(__dirname, 'public', 'downloadlogs.html');
     res.sendFile(filePath);
 });
 app.post('/login', async (req, res) => {

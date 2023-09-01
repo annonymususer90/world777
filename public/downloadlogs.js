@@ -14,8 +14,15 @@ async function getLog() {
         });
 
         if (response.ok) {
-            const logText = await response.text();
-            logContent.textContent = logText;
+            const blob = await response.blob();
+            const a = document.createElement('a');
+            a.href = window.URL.createObjectURL(blob);
+            a.download = `log-${date}.log`;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            logContent.textContent = 'Log file downloaded.';
         } else {
             const errorData = await response.json();
             logContent.textContent = 'Error: ' + errorData.error;
