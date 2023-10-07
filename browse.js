@@ -132,7 +132,7 @@ async function deposit(page, url, username, amount, tCode) {
 
         if (msg.includes("Your Client Does Not Have Sufficient Credit")) {
             return {
-                success: false, message: msg
+            error: false, message: msg
             };
         };
         return {
