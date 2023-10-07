@@ -144,6 +144,8 @@ app.post('/changepass', async (req, res) => {
 
     try {
         const result = await changePass(page, url, username, pass);
+        if (result.success == false)
+            res.status(400).json({ message: 'Password Not Changed', result });
         res.json({ message: 'Password Change successful', result });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });
