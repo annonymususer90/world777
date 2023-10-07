@@ -9,7 +9,7 @@ const { login, register, lockUser, deposit, withdraw, changePass } = require('./
 require('dotenv').config();
 
 const app = express();
-const PORT = 80;
+const PORT = 3000;
 const bodyParser = require('body-parser');
 const loginCache = new Map();
 const allowedDomains = ['http://fgpunt.com', 'https://fgpunt.com'];
@@ -35,7 +35,7 @@ var b;
             process.env.NODE_ENV === "production"
                 ? process.env.PUPPETEER_EXECUTABLE_PATH
                 : puppeteer.executablePath(),
-        headless: true,
+        headless: false,
         timeout: 120000,
         defaultViewport: { width: 1300, height: 800 },
     });
@@ -144,6 +144,8 @@ app.post('/changepass', async (req, res) => {
 
     try {
         const result = await changePass(page, url, username, pass);
+        if (result.success == false)
+            res.status(400).json({ message: 'Password Not Changed', result });
         res.json({ message: 'Password Change successful', result });
     } catch (error) {
         res.status(500).json({ error: 'Internal server error' });

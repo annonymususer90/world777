@@ -98,7 +98,7 @@ async function lockUser(page, url, username, tCode) {
         // await page.evaluate(`document.querySelector('form[data-vv-scope="UserLock"]').children[1].children[1].firstChild.click()`);
         await page.waitForSelector('input[name="UserLockMpassword"]')
             .then(async element => await element.type(tCode + "\n"));
-        
+
     } catch (error) {
         await login();
         return { success: false, error: error.message };
@@ -117,14 +117,17 @@ async function deposit(page, url, username, amount, tCode) {
         });
         await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].children[0].click();`);
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[0].firstChild.click();`);
-        const element = await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 120000 });
-        await element.type(amount);
-        await page.evaluate((amount) => {
-            const element = document.querySelector('input[name="userCreditUpdateamount"]');
-            if (element && element.value !== amount) {
-                element.value = amount;
-            }
-        }, amount);
+        // const element = await page.waitForSelector('input[name="userCreditUpdateamount"]', { timeout: 120000 });
+        // await element.type(amount);
+        // await page.evaluate((amount) => {
+        //     const element = document.querySelector('input[name="userCreditUpdateamount"]');
+        //     if (element && element.value !== amount) {
+        //         element.value = amount;
+        //     }
+        // }, amount);
+        await page.waitForFunction(`!!document.querySelector('input[name="userCreditUpdateamount"]')`, { timeout: 120000 });
+        await page.focus('input[name="userCreditUpdateamount"]');
+        await page.keyboard.type(amount, { delay: 50 });
         await page.waitForSelector('input[name="userCreditUpdatempassword"]', { timeout: 30000 })
             .then(element => element.type(tCode + "\n"));
         await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show', { timeout: 120000 });
@@ -155,14 +158,18 @@ async function withdraw(page, url, username, amount, tCode) {
         });
         await page.evaluate(`document.querySelector('span[title="${username}"').parentElement.parentElement.children[1].firstChild.click();`);
         await page.evaluate(`document.querySelector('ul[role="tablist"]').children[1].firstChild.click();`);
-        const element = await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 120000 });
-        await element.type(amount);
-        await page.evaluate((amount) => {
-            const element = document.querySelector('input[name="userWithdrawCreditUpdateamount"]');
-            if (element && element.value !== amount) {
-                element.value = amount;
-            }
-        }, amount);
+        // const element = await page.waitForSelector('input[name="userWithdrawCreditUpdateamount"]', { timeout: 120000 });
+        // await element.type(amount);
+        // await page.evaluate((amount) => {
+        //     const element = document.querySelector('input[name="userWithdrawCreditUpdateamount"]');
+        //     if (element && element.value !== amount) {
+        //         element.value = amount;
+        //     }
+        // }, amount);
+
+        await page.waitForFunction(`!!document.querySelector('input[name="userWithdrawCreditUpdateamount"]')`, { timeout: 120000 });
+        await page.focus('input[name="userWithdrawCreditUpdateamount"]');
+        await page.keyboard.type(amount, { delay: 50 });
         await page.waitForSelector('input[name="userWithdrawCreditUpdatempassword"]', { timeout: 120000 })
             .then(element => element.type(tCode + "\n"));
         await page.waitForSelector('.swal2-container.swal2-top-end.swal2-backdrop-show', { timeout: 120000 });
